@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Bizim Macera</title>
+<style>
+  :root{--ink:#fff3e0;--coral:#ff5c7a;--deep:#2a1740;--gold:#ffc46b}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{background:#170c26;color:var(--ink);font-family:Georgia,"Times New Roman",serif;display:flex;align-items:center;justify-content:center}
+  #app{position:relative;width:min(100vw,800px);touch-action:none;user-select:none}
+  canvas#c{display:block;width:100%;height:auto;background:#2a1b4d;border-radius:10px}
+  #menu{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(32,14,50,.86);border-radius:10px;text-align:center;padding:14px;overflow:auto}
+  h1{margin:0;font-size:clamp(1.8rem,6vw,2.8rem);font-weight:normal;letter-spacing:.03em}
+  h2{margin:0;font-weight:normal;font-size:clamp(1.4rem,4.5vw,2rem)}
+  p{margin:0;max-width:34em;line-height:1.45}
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  button{font:inherit;cursor:pointer;color:var(--deep);background:var(--ink);border:2px solid var(--ink);border-radius:999px;padding:9px 24px;font-size:1.05rem}
+  button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  button.card{border-radius:16px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 20px}
+  button.lv{border-radius:14px;min-width:132px;padding:8px 12px;font-size:.95rem}
+  button.lv small{display:block;color:#a0436a}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.ghost{background:transparent;color:var(--ink);font-size:.9rem;padding:6px 16px}
+  #top{position:absolute;top:8px;right:8px}
+  #touch{position:absolute;left:0;right:0;bottom:8px;display:none;justify-content:space-between;padding:0 12px;pointer-events:none}
+  #touch div{display:flex;gap:10px;pointer-events:auto}
+  #touch button{width:64px;height:64px;border-radius:50%;padding:0;font-size:1.6rem;opacity:.75}
+  @media (pointer:coarse){#touch{display:flex}}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c" width="800" height="416"></canvas>
+  <button id="top" class="ghost">Bölümler</button>
+  <div id="touch"><div><button data-k="left">◀</button><button data-k="right">▶</button></div><div><button data-k="jump">▲</button></div></div>
+  <div id="menu"></div>
+</div>
+<script>
+/* ============ BURAYI KENDİNE GÖRE DEĞİŞTİR ============ */
+const CONFIG = {
+  title: 'Hakan & Sare',
+  subtitle: 'Her şey bir League of Legends maçıyla başladı.',
+  chars: [
+    { name: 'Hakan', hair: '#2b1d16', skin: '#f1c7a0', shirt: '#2f7f9f', pants: '#2a3350', long: false },
+    { name: 'Sare', hair: '#5a2e1e', skin: '#f1c7a0', shirt: '#e0507a', pants: '#4a2a5a', long: true }
+  ],
+  notes: [
+    'Her şey League of Legends\'ta başladı. Sonra Rize\'de ilk kez yüz yüze buluştuk, Tavuk Dünyası\'nda yemek yedik ve Ramada\'ya geçtik. Hikayemizin gerçek başlangıcı o gündü.',
+    'Sen İstanbul\'a geldin ve tam bir ay kaldın. Mavi Honda CB250R\'mle seni şehirde gezdirdim. O ay hiç bitmesin istedim.',
+    'Ben ara ara Rize\'ye geldim. Yollar uzundu ama her biri seni görmeye çıkıyordu.',
+    'Askere gittim ama aklım hep sendeydi. Seni beklemek de, sana dönmek de en güzel hedefimdi.',
+    'Rize Dağmaran\'da, tepedeki kafede sana evlenme teklif ettim ve evet dedin. Sonra nişanlandık.',
+    'Nişandan 6 ay sonra İstanbul\'da evlendik. Hikayemiz burada yeni bir bölüme başlıyor. Seni seviyorum Sare.'
+  ]
+};
+/* ======================================================= */
+const T = 32, ROWS = 13, W = 800, H = 416;
+const THEMES = {
+  rize: { bg: 'rize', sky: ['#4f7f8a', '#9fc7b0', '#f1e6b8'], sun: ['rgba(255,250,225,.7)', 600, 120, 40], gnd: ['#6b4a3a', '#7fbf5a', '#8a6a4a', '#a4d46e'], water: ['#c9e0d8', 'rgba(255,255,255,.55)'] },
+  ist: { bg: 'ist', sky: ['#2a1b4d', '#c4457a', '#ffa45c'], sun: ['rgba(255,214,150,.9)', 560, 190, 46], gnd: ['#8a4a4a', '#ffb27a', '#b8665a', '#ffd29a'], water: ['#3b1f5c', 'rgba(255,200,160,.35)'] },
+  road: { bg: 'road', sky: ['#0b1030', '#1c2a5c', '#3b3f7a'], sun: ['rgba(240,240,255,.92)', 620, 90, 28], gnd: ['#2c2f4e', '#7a86d8', '#3a3f66', '#9aa6ee'], water: ['#0a0f2a', 'rgba(150,170,255,.3)'] },
+  army: { bg: 'army', sky: ['#5f6a4a', '#b0a56a', '#ecdca2'], sun: ['rgba(255,240,190,.8)', 560, 170, 44], gnd: ['#4f5232', '#8da35a', '#6a6f45', '#a9bd72'], water: ['#3a4a3a', 'rgba(220,230,170,.3)'] },
+  hill: { bg: 'hill', sky: ['#6fa3c8', '#c9dfe6', '#fff1d6'], sun: ['rgba(255,255,255,.8)', 640, 100, 36], gnd: ['#6b4a3a', '#6fb04e', '#8a6a4a', '#8fd05f'], water: ['#e8f1ee', 'rgba(255,255,255,.65)'] },
+  wed: { bg: 'wed', sky: ['#f6b8cc', '#ffd9c9', '#fff4e0'], sun: ['rgba(255,255,255,.85)', 560, 150, 48], gnd: ['#c58a94', '#ffe6ea', '#d9a0aa', '#fff2f4'], water: ['#f5cfdc', 'rgba(255,255,255,.7)'] }
+};
+const LEVELS = [
+  { name: 'Rize: İlk Buluşma', theme: 'rize', w: 60,
+    ground: [[0,14,10],[17,30,10],[33,45,10],[48,60,10]],
+    plats: [[6,7,3],[20,7,3],[36,7,4],[52,8,3]],
+    hearts: [[7,6],[8,6],[15,8],[16,7],[21,6],[22,6],[25,9],[37,6],[38,6],[40,9],[49,8],[53,7],[54,7]],
+    enemies: [[24,9],[41,9]], spikes: [], goal: [57,9] },
+  { name: 'İstanbul: Bir Ay', theme: 'ist', w: 70, bikes: [[7,9],[35,9]],
+    ground: [[0,10,10],[13,20,10],[23,31,8],[34,42,10],[45,52,9],[55,70,10]],
+    plats: [[10,7,2],[19,7,2],[32,5,3],[43,7,2],[53,6,2],[63,7,2]],
+    hearts: [[5,9],[11,6],[16,9],[17,9],[22,5],[27,7],[28,7],[33,4],[35,9],[40,9],[44,5],[48,8],[54,5],[60,9],[62,9]],
+    enemies: [[17,9],[27,7],[38,9],[49,8],[60,9]], spikes: [[64,9,2]], goal: [67,9] },
+  { name: 'Yollar', theme: 'road', w: 80,
+    ground: [[0,8,10],[72,80,10]],
+    plats: [[10,8,2],[14,7,2],[18,6,2],[22,7,2],[26,8,3],[31,7,2],[35,6,2],[39,5,2],[43,6,2],[47,7,3],[52,8,2],[56,7,2],[60,6,2],[64,7,2],[68,8,3]],
+    hearts: [[10,7],[14,6],[18,5],[22,6],[27,7],[31,6],[35,5],[39,4],[43,5],[48,6],[52,7],[56,6],[60,5],[64,6],[69,7]],
+    enemies: [[27,7],[48,6],[69,7]], spikes: [], goal: [76,9] },
+  { name: 'Askerlik', theme: 'army', w: 90,
+    ground: [[0,12,10],[15,24,9],[27,36,10],[39,46,8],[49,60,10],[63,72,9],[75,90,10]],
+    plats: [[12,7,2],[25,6,2],[37,5,2],[47,5,2],[60,6,3],[73,6,4],[18,6,4],[30,7,4],[53,7,4],[66,6,2]],
+    hearts: [[6,9],[13,6],[19,5],[21,5],[26,5],[31,6],[38,4],[41,6],[48,4],[53,6],[56,9],[62,5],[67,5],[74,5],[80,9]],
+    enemies: [[17,8],[29,9],[42,7],[51,9],[65,8],[78,9]], spikes: [[20,8,2],[32,9,2],[55,9,2],[68,8,2]], goal: [86,9] },
+  { name: 'Dağmaran: Teklif', theme: 'hill', w: 60, ring: 1,
+    ground: [[0,11,10],[11,19,9],[19,27,8],[27,35,7],[35,43,6],[43,60,5]],
+    plats: [[12,7,2],[21,6,2],[29,5,2],[37,4,3],[46,3,2]],
+    hearts: [[3,9],[6,9],[12,6],[13,6],[16,8],[21,5],[22,5],[24,7],[29,4],[30,4],[32,6],[37,3],[38,3],[41,5],[46,2],[47,2],[52,4],[54,4]],
+    enemies: [[14,8],[23,7],[31,6],[40,5],[53,4]], spikes: [], goal: [57,4] },
+  { name: 'İstanbul: Evlilik', theme: 'wed', w: 80,
+    outfit: { 0: { shirt: '#23232e', pants: '#23232e' }, 1: { shirt: '#ffffff', pants: '#ffffff' } },
+    ground: [[0,20,10],[23,40,10],[43,60,10],[63,80,10]],
+    plats: [[8,7,3],[26,7,3],[33,6,2],[46,7,3],[53,6,3],[66,7,3],[72,6,2]],
+    hearts: [[8,6],[9,6],[10,6],[15,9],[21,7],[27,6],[28,6],[29,6],[35,5],[41,8],[47,6],[48,6],[55,5],[61,8],[67,6],[68,6],[73,5],[76,9]],
+    enemies: [[16,9],[31,9],[50,9],[70,9]], spikes: [], goal: [77,9] }
+];
+
+const cv = document.getElementById('c'), cx = cv.getContext('2d'), menu = document.getElementById('menu');
+const SK = 'bizim-macera-v2'; let save = { best: {}, unlocked: 1 };
+try { save = JSON.parse(localStorage.getItem(SK)) || save; } catch (e) {}
+const store = () => { try { localStorage.setItem(SK, JSON.stringify(save)); } catch (e) {} };
+
+let AC; function beep(f, d = .1, type = 'square', v = .05, s = 0) {
+  try { AC = AC || new AudioContext(); const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+    o.type = type; o.frequency.setValueAtTime(f, t); if (s) o.frequency.exponentialRampToValueAtTime(f + s, t + d);
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+    o.connect(g).connect(AC.destination); o.start(); o.stop(t + d); } catch (e) {}
+}
+
+/* ---- Durum ---- */
+let toast = { t: '', l: 0 }, sel = 0, li = 0, grid, ents, p, cam = 0, state = 'menu', timer = 0, tick = 0, got = 0, parts = [];
+const keys = { left: 0, right: 0, jump: 0 };
+const solid = (x, y) => x < 0 || x >= grid[0].length ? 1 : y < 0 || y >= ROWS ? 0 : grid[y][x] === 1 || grid[y][x] === 2;
+
+function load(i) {
+  li = i; const L = LEVELS[i];
+  grid = Array.from({ length: ROWS }, () => Array(L.w).fill(0));
+  L.ground.forEach(([a, b, t]) => { for (let x = a; x < b; x++) for (let y = t; y < ROWS; y++) grid[y][x] = 1; });
+  L.plats.forEach(([x, y, n]) => { for (let k = 0; k < n; k++) grid[y][x + k] = 2; });
+  L.spikes.forEach(([x, y, n]) => { for (let k = 0; k < n; k++) grid[y][x + k] = 3; });
+  ents = { bikes: (L.bikes || []).map(([x, y]) => ({ x: x * T + 16, y: (y + 1) * T, on: 1 })), hearts: L.hearts.map(([x, y]) => ({ x: x * T + 16, y: y * T + 16, on: 1 })),
+    foes: L.enemies.map(([x, y]) => ({ x: x * T + 3, y: (y + 1) * T - 18, w: 26, h: 18, vx: .8, alive: 1 })) };
+  p = { x: 2 * T + 5, y: 10 * T - 30, w: 22, h: 30, vx: 0, vy: 0, ground: 0, coy: 0, buf: 0, face: 1, bike: 0 };
+  got = 0; parts = []; cam = 0; state = 'play'; toast = { t: L.name, l: 150 }; screen('');
+}
+function overlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+function tilesHit(e) {
+  const x0 = Math.floor(e.x / T), x1 = Math.floor((e.x + e.w - .01) / T), y0 = Math.floor(e.y / T), y1 = Math.floor((e.y + e.h - .01) / T);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (solid(x, y)) return 1; return 0;
+}
+function spikeHit(e) {
+  const x0 = Math.floor((e.x + 5) / T), x1 = Math.floor((e.x + e.w - 5) / T), y0 = Math.floor((e.y + 8) / T), y1 = Math.floor((e.y + e.h - 1) / T);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (y >= 0 && y < ROWS && x >= 0 && x < grid[0].length && grid[y][x] === 3) return 1; return 0;
+}
+function die() { if (state !== 'play') return; state = 'dead'; timer = 45; beep(300, .35, 'sawtooth', .06, -200); }
+
+function update() {
+  tick++; if (toast.l > 0) toast.l--;
+  if (state === 'dead') { if (--timer <= 0) load(li); return; }
+  if (state === 'win') {
+    parts.forEach(q => { q.x += q.vx; q.y += q.vy; q.vy += .05; q.l--; }); parts = parts.filter(q => q.l > 0);
+    if (--timer <= 0) { state = 'menu'; finish(); } return;
+  }
+  if (state !== 'play') return;
+  const dir = keys.right - keys.left, ac = p.ground ? .35 : .22;
+  if (p.bike > 0) p.bike--;
+  p.vx += (dir * (p.bike > 0 ? 5 : 3.3) - p.vx) * ac; if (dir) p.face = dir;
+  if (keys.jump) p.buf = 10; else p.buf--;
+  p.coy = p.ground ? 9 : p.coy - 1;
+  if (p.buf > 0 && p.coy > 0) { p.vy = -12.2; p.buf = 0; p.coy = 0; beep(520, .12, 'square', .04, 300); }
+  if (!keys.jump && p.vy < -4) p.vy *= .85;
+  p.vy = Math.min(p.vy + .6, 13);
+  p.x += p.vx; if (tilesHit(p)) { p.x = p.vx > 0 ? Math.floor((p.x + p.w - .01) / T) * T - p.w : (Math.floor(p.x / T) + 1) * T; p.vx = 0; }
+  p.y += p.vy; p.ground = 0;
+  if (tilesHit(p)) { if (p.vy > 0) { p.y = Math.floor((p.y + p.h - .01) / T) * T - p.h; p.ground = 1; } else p.y = (Math.floor(p.y / T) + 1) * T; p.vy = 0; }
+  p.x = Math.max(0, p.x);
+  if (p.y > 11.5 * T || spikeHit(p)) return die();
+  ents.hearts.forEach(h => { if (h.on && Math.hypot(h.x - (p.x + 11), h.y - (p.y + 15)) < 22) { h.on = 0; got++; beep(880, .1, 'triangle', .06, 400);
+    for (let k = 0; k < 5; k++) parts.push({ x: h.x, y: h.y, vx: Math.random() * 3 - 1.5, vy: -Math.random() * 2 - 1, l: 25 }); } });
+  parts.forEach(q => { q.x += q.vx; q.y += q.vy; q.vy += .05; q.l--; }); parts = parts.filter(q => q.l > 0);
+  ents.bikes.forEach(b => { if (b.on && overlap(p, { x: b.x - 16, y: b.y - 26, w: 32, h: 26 })) { b.on = 0; p.bike = 300; toast = { t: 'Honda CB250R!', l: 120 }; beep(200, .4, 'sawtooth', .05, 300); } });
+  if (p.bike > 0 && tick % 4 === 0) parts.push({ x: p.x + 11 - p.face * 18, y: p.y + 26, vx: -p.face * 1.2, vy: -.4, l: 18 });
+  for (const f of ents.foes) {
+    if (!f.alive) continue;
+    const fx = f.vx > 0 ? f.x + f.w + 1 : f.x - 1, mid = Math.floor((f.y + f.h / 2) / T), below = Math.floor((f.y + f.h + 2) / T);
+    if (solid(Math.floor(fx / T), mid) || !solid(Math.floor(fx / T), below)) f.vx = -f.vx;
+    f.x += f.vx;
+    if (overlap(p, f)) { if (p.vy > 0 && p.y + p.h - f.y < 16) { f.alive = 0; p.vy = -8.5; beep(240, .15, 'square', .06, 200); } else return die(); }
+  }
+  const gx = LEVELS[li].goal[0] * T, gy = (LEVELS[li].goal[1] + 1) * T - 30;
+  if (overlap(p, { x: gx - 4, y: gy, w: 34, h: 30 })) {
+    state = 'win'; timer = 80; beep(660, .5, 'triangle', .07, 400);
+    for (let k = 0; k < 30; k++) parts.push({ x: gx + 15, y: gy, vx: Math.random() * 6 - 3, vy: -Math.random() * 4 - 1, l: 70 });
+  }
+  cam += (Math.max(0, Math.min(LEVELS[li].w * T - W, p.x - 330)) - cam) * .12;
+}
+
+/* ---- Çizim ---- */
+function heart(g, x, y, s, col) {
+  g.fillStyle = col; g.beginPath(); g.moveTo(x, y + s * .9);
+  g.bezierCurveTo(x - s * 1.5, y - s * .1, x - s * .7, y - s * 1.1, x, y - s * .3);
+  g.bezierCurveTo(x + s * .7, y - s * 1.1, x + s * 1.5, y - s * .1, x, y + s * .9); g.fill();
+}
+function drawChar(g, c, x, y, f, t, mv) {
+  g.save(); g.translate(x + 11, y + 30); g.scale(f, 1);
+  const b = mv ? Math.sin(t * .4) * 2 : 0, l = mv ? Math.sin(t * .4) * 4 : 0;
+  if (c.long) { g.fillStyle = c.hair; g.fillRect(-9, -33, 6, 17 + b * .3); }
+  g.fillStyle = c.pants; g.fillRect(-7 + l * .5, -9, 6, 9); g.fillRect(1 - l * .5, -9, 6, 9);
+  g.fillStyle = c.shirt; g.fillRect(-8, -21, 16, 13);
+  g.fillStyle = c.skin; g.beginPath(); g.arc(0, -27, 7.5, 0, 7); g.fill();
+  g.fillStyle = c.hair; g.beginPath(); g.arc(0, -28, 8, Math.PI, 0); g.fill(); g.fillRect(-8, -29, 4, 5);
+  if (c.long) { g.beginPath(); g.arc(-9, -22 + b, 3.5, 0, 7); g.fill(); }
+  g.fillStyle = '#2a1740'; g.fillRect(3, -27, 2, 3);
+  g.restore();
+}
+function skyline(c1, c2) {
+  const px = -(cam * .25) % 640;
+  for (let k = -1; k < 3; k++) {
+    const o = px + k * 640; cx.fillStyle = c1;
+    cx.fillRect(o + 380, 250, 150, 130); cx.beginPath(); cx.arc(o + 455, 250, 48, Math.PI, 0); cx.fill();
+    cx.fillStyle = c2;
+    cx.fillRect(o + 60, 255, 150, 130); cx.beginPath(); cx.arc(o + 135, 255, 62, Math.PI, 0); cx.fill();
+    [[o + 52], [o + 210], [o + 410]].forEach(([mx]) => { cx.fillRect(mx, 170, 9, 220); cx.beginPath(); cx.moveTo(mx - 3, 170); cx.lineTo(mx + 4.5, 140); cx.lineTo(mx + 12, 170); cx.fill(); });
+    cx.fillRect(o + 290, 200, 26, 190); cx.beginPath(); cx.moveTo(o + 286, 200); cx.lineTo(o + 303, 160); cx.lineTo(o + 320, 200); cx.fill();
+  }
+}
+function hills(par, base, amp, col, l1, l2, terr) {
+  const o = cam * par, y = (x, k) => base + k * 9 + Math.sin((x + o) / l1) * amp + Math.sin((x + o) / l2) * amp * .5;
+  cx.fillStyle = col; cx.beginPath(); cx.moveTo(0, H);
+  for (let x = 0; x <= W; x += 10) cx.lineTo(x, y(x, 0));
+  cx.lineTo(W, H); cx.fill();
+  if (terr) { cx.strokeStyle = 'rgba(210,240,150,.22)'; cx.lineWidth = 2;
+    for (let k = 1; k <= 5; k++) { cx.beginPath(); for (let x = 0; x <= W; x += 10) x ? cx.lineTo(x, y(x, k)) : cx.moveTo(x, y(x, k)); cx.stroke(); } }
+}
+function building(sx, y, w, h, col, win) {
+  cx.fillStyle = col; cx.fillRect(sx, y, w, h); cx.fillStyle = win;
+  for (let yy = y + 10; yy < y + h - 12; yy += 18) for (let xx = sx + 8; xx < sx + w - 8; xx += 16) cx.fillRect(xx, yy, 8, 10);
+}
+function board(sx, y, w, h, bg, fg, text, size, posts) {
+  if (posts) { cx.fillStyle = '#2a2a3a'; cx.fillRect(sx + 10, y + h, 6, 300); cx.fillRect(sx + w - 16, y + h, 6, 300); }
+  cx.fillStyle = bg; cx.fillRect(sx, y, w, h); cx.strokeStyle = fg; cx.lineWidth = 2; cx.strokeRect(sx + 3, y + 3, w - 6, h - 6);
+  cx.fillStyle = fg; cx.font = 'bold ' + size + 'px Georgia'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillText(text, sx + w / 2, y + h / 2 + 1); cx.textBaseline = 'alphabetic'; cx.textAlign = 'left';
+}
+function star(x, y, r1, r2) { cx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? r2 : r1, t = -Math.PI / 2 + i * Math.PI / 5; cx.lineTo(x + Math.cos(t) * r, y + Math.sin(t) * r); } cx.closePath(); cx.fill(); }
+function background(th) {
+  const k = th.bg;
+  if (k === 'rize') {
+    hills(.12, 190, 30, '#7fa890', 170, 70); hills(.25, 250, 26, '#5e9170', 130, 55, 1);
+    const a = 470 - cam * .5, b = 1180 - cam * .5;
+    cx.fillStyle = '#c9302a'; cx.fillRect(a - 6, 225, 202, 14); building(a, 239, 190, 100, '#f3e3c0', '#c9a96a');
+    board(a + 10, 160, 170, 52, '#d0302a', '#ffd23c', 'TAVUK DÜNYASI', 19);
+    building(b, 120, 130, 225, '#8d9bb0', '#e8f0ff'); board(b - 5, 80, 140, 38, '#1e5fb4', '#ffffff', 'RAMADA', 22);
+    hills(.4, 300, 14, '#3f7557', 90, 40, 1);
+  } else if (k === 'ist') skyline('#6a3a6e', '#4a2a5e');
+  else if (k === 'road') {
+    for (let i = 0; i < 40; i++) { cx.fillStyle = 'rgba(255,255,255,' + (.4 + .4 * Math.sin(tick / 20 + i)) + ')'; cx.fillRect((i * 137) % W, (i * 71) % 170, 2, 2); }
+    hills(.15, 230, 34, '#171d45', 160, 60); hills(.3, 285, 24, '#0f1535', 110, 45);
+    board(520 - cam * .45, 160, 200, 48, '#1d6b3a', '#ffffff', 'İSTANBUL ⇄ RİZE', 18, 1);
+    board(1500 - cam * .45, 160, 130, 48, '#1d6b3a', '#ffffff', 'RİZE →', 20, 1);
+  } else if (k === 'army') {
+    hills(.12, 215, 26, '#8f9a62', 150, 60); hills(.25, 262, 22, '#6e7a46', 120, 50);
+    const bx = 420 - cam * .4, fx = 700 - cam * .4;
+    building(bx, 250, 200, 90, '#7a7358', '#d8d09a'); cx.fillStyle = '#5a5440'; cx.fillRect(bx - 6, 244, 212, 10);
+    cx.fillStyle = '#d9d9d9'; cx.fillRect(fx, 100, 5, 250); cx.fillStyle = '#e30a17'; cx.fillRect(fx + 5, 104, 96, 64);
+    cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(fx + 40, 136, 17, 0, 7); cx.fill();
+    cx.fillStyle = '#e30a17'; cx.beginPath(); cx.arc(fx + 46, 136, 14, 0, 7); cx.fill(); cx.fillStyle = '#fff'; star(fx + 62, 136, 8, 3.5);
+  } else if (k === 'hill') {
+    hills(.1, 200, 34, '#a5c9bd', 180, 75); hills(.2, 245, 30, '#7cb08d', 140, 60, 1);
+    const hx = 520 - cam * .35;
+    cx.fillStyle = '#8a5a3a'; cx.fillRect(hx, 205, 150, 85); cx.fillStyle = '#5a3a2a'; cx.beginPath(); cx.moveTo(hx - 12, 205); cx.lineTo(hx + 75, 160); cx.lineTo(hx + 162, 205); cx.fill();
+    cx.fillStyle = '#ffd98a'; cx.fillRect(hx + 20, 225, 28, 28); cx.fillRect(hx + 100, 225, 28, 28);
+    board(hx, 112, 150, 36, '#3a2a2a', '#ffe3a0', 'DAĞMARAN', 20);
+    hills(.45, 310, 16, '#4e8f4e', 100, 45, 1);
+  } else if (k === 'wed') {
+    skyline('#e7a9bf', '#d68fb0');
+    for (let i = 0; i < 14; i++) heart(cx, (i * 131 + i * i * 7) % W + Math.sin(tick / 30 + i) * 12, H - ((tick * (.4 + (i % 4) * .2) + i * 61) % H), 5 + (i % 4) * 2, 'rgba(255,120,160,.5)');
+  }
+}
+const charFor = (i) => { const o = LEVELS[li].outfit; return o && o[i] ? Object.assign({}, CONFIG.chars[i], o[i]) : CONFIG.chars[i]; };
+function bike(g, x, y, f, s) {
+  g.save(); g.translate(x, y); g.scale(f * s, s);
+  g.fillStyle = '#1b2230'; g.beginPath(); g.arc(-14, -7, 7, 0, 7); g.arc(14, -7, 7, 0, 7); g.fill();
+  g.fillStyle = '#8ab4ff'; g.beginPath(); g.arc(-14, -7, 3, 0, 7); g.arc(14, -7, 3, 0, 7); g.fill();
+  g.fillStyle = '#1e6be0'; g.fillRect(-12, -17, 24, 7); g.beginPath(); g.moveTo(0, -17); g.lineTo(10, -25); g.lineTo(15, -17); g.fill();
+  g.fillRect(-15, -21, 12, 4); g.fillStyle = '#111'; g.fillRect(-12, -22, 9, 3); g.fillStyle = '#ffe58a'; g.fillRect(14, -22, 4, 4);
+  g.restore();
+}
+function ring(g, x, y) {
+  g.strokeStyle = '#ffd24a'; g.lineWidth = 3; g.beginPath(); g.arc(x, y + 4, 7, 0, 7); g.stroke();
+  g.fillStyle = '#bfefff'; g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x + 5, y - 4); g.lineTo(x, y); g.lineTo(x - 5, y - 4); g.fill();
+}
+function draw() {
+  const th = THEMES[LEVELS[li].theme], g = cx, sky = g.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, th.sky[0]); sky.addColorStop(.55, th.sky[1]); sky.addColorStop(1, th.sky[2]);
+  g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  g.fillStyle = th.sun[0]; g.beginPath(); g.arc(th.sun[1], th.sun[2], th.sun[3], 0, 7); g.fill();
+  background(th);
+  g.fillStyle = th.water[0]; g.fillRect(0, 11 * T, W, H);
+  g.strokeStyle = th.water[1]; g.lineWidth = 2;
+  for (let r = 0; r < 2; r++) { g.beginPath(); for (let x = 0; x <= W; x += 8) g.lineTo(x, 11.3 * T + r * 12 + Math.sin((x + cam + tick * 2 + r * 40) / 18) * 3); g.stroke(); }
+  if (!grid) return;
+  g.save(); g.translate(-Math.round(cam), 0);
+  const x0 = Math.floor(cam / T), x1 = x0 + 26;
+  for (let y = 0; y < ROWS; y++) for (let x = x0; x <= x1 && x < grid[0].length; x++) {
+    const t = grid[y][x]; if (!t) continue;
+    if (t === 3) { g.fillStyle = '#ffe3c2'; for (let k = 0; k < 2; k++) { g.beginPath(); g.moveTo(x * T + k * 16, (y + 1) * T); g.lineTo(x * T + k * 16 + 8, y * T + 8); g.lineTo(x * T + k * 16 + 16, (y + 1) * T); g.fill(); } continue; }
+    g.fillStyle = t === 1 ? th.gnd[0] : th.gnd[2]; g.fillRect(x * T, y * T, T, T);
+    if (!solid(x, y - 1)) { g.fillStyle = t === 1 ? th.gnd[1] : th.gnd[3]; g.fillRect(x * T, y * T, T, 6); }
+    g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x * T, y * T + T - 2, T, 2);
+  }
+  ents.hearts.forEach(h => { if (h.on) heart(g, h.x, h.y + Math.sin(tick / 12 + h.x) * 3, 9, '#ff5c7a'); });
+  ents.foes.forEach(f => { if (!f.alive) return; const w = Math.sin(tick / 5) * 7, d = f.vx > 0 ? 1 : -1;
+    g.save(); g.translate(f.x + 13, f.y + 10); g.scale(d, 1); g.fillStyle = '#fff'; g.beginPath(); g.ellipse(0, 2, 13, 7, 0, 0, 7); g.fill();
+    g.beginPath(); g.moveTo(-4, 0); g.lineTo(-12, -10 - w); g.lineTo(4, -2); g.fill(); g.fillStyle = '#ff9a3c'; g.fillRect(11, 0, 7, 3);
+    g.fillStyle = '#222'; g.fillRect(7, -2, 2, 2); g.restore(); });
+  ents.bikes.forEach(b => { if (b.on) { g.save(); g.shadowColor = '#7ab0ff'; g.shadowBlur = 14; bike(g, b.x, b.y + Math.sin(tick / 12) * 3, 1, .9); g.restore(); } });
+  const gl = LEVELS[li].goal, gy = (gl[1] + 1) * T - 30;
+  drawChar(g, charFor(1 - sel), gl[0] * T + 2, gy, -1, tick, 0);
+  if (LEVELS[li].ring) ring(g, gl[0] * T + 13, gy - 24 + Math.sin(tick / 10) * 3);
+  else heart(g, gl[0] * T + 13, gy - 22 + Math.sin(tick / 10) * 3, 8, '#ff5c7a');
+  if (state !== 'dead' || tick % 6 < 3) {
+    const riding = p.bike > 0;
+    if (riding) bike(g, p.x + 11, p.y + 30, p.face, 1);
+    drawChar(g, charFor(sel), p.x, p.y - (riding ? 9 : 0), p.face, tick, !riding && p.ground && Math.abs(p.vx) > .6);
+  }
+  parts.forEach(q => heart(g, q.x, q.y, 5, '#ff8aa0'));
+  g.restore();
+  g.fillStyle = '#fff3e0'; g.font = 'bold 18px Georgia'; g.textAlign = 'left';
+  g.fillText('♥ ' + got + '/' + LEVELS[li].hearts.length + '   ' + LEVELS[li].name, 14, 26);
+  if (p && p.bike > 0) { g.font = 'bold 15px Georgia'; g.fillText('Honda CB250R  ' + Math.ceil(p.bike / 60) + ' sn', 14, 48); }
+  if (toast.l > 0) { g.save(); g.globalAlpha = Math.min(1, toast.l / 30); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 8; g.font = 'bold 28px Georgia'; g.textAlign = 'center'; g.fillText(toast.t, W / 2, 80); g.restore(); }
+  if (state === 'dead') { g.fillStyle = 'rgba(255,60,90,.22)'; g.fillRect(0, 0, W, H); }
+}
+
+/* ---- Menüler ---- */
+function screen(h) { menu.innerHTML = h; menu.style.display = h ? 'flex' : 'none'; document.getElementById('top').style.display = h ? 'none' : ''; }
+function preview() { menu.querySelectorAll('canvas').forEach(c => { const g = c.getContext('2d'); g.scale(2, 2); drawChar(g, CONFIG.chars[+c.dataset.i], 10, 6, 1, 0, 0); }); }
+function titleScreen() {
+  state = 'menu';
+  screen(`<h1>${CONFIG.title}</h1><p>${CONFIG.subtitle}</p><p>Kim oynayacak? Diğeri seni bölümün sonunda bekliyor.</p><div class="row">${
+    CONFIG.chars.map((c, i) => `<button class="card" data-c="${i}"><canvas width="64" height="80" data-i="${i}"></canvas>${c.name}</button>`).join('')}</div>`);
+  preview(); menu.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { sel = +b.dataset.c; levelScreen(); });
+}
+function levelScreen() {
+  state = 'menu';
+  screen(`<h2>Bölüm seç</h2><div class="row">${LEVELS.map((L, i) => `<button class="lv" data-l="${i}" ${i >= save.unlocked ? 'disabled' : ''}>${i + 1}. ${L.name}<small>♥ ${save.best[i] || 0}/${L.hearts.length}</small></button>`).join('')}</div><button class="ghost" id="back">Karakter değiştir</button>`);
+  menu.querySelectorAll('[data-l]').forEach(b => b.onclick = () => load(+b.dataset.l));
+  document.getElementById('back').onclick = titleScreen;
+}
+function finish() {
+  const L = LEVELS[li], n = L.hearts.length, last = li === LEVELS.length - 1;
+  save.best[li] = Math.max(save.best[li] || 0, got); save.unlocked = Math.max(save.unlocked, Math.min(li + 2, LEVELS.length)); store();
+  screen(`<h2>${last ? 'Hepsini bitirdin!' : 'Bölüm tamam!'}</h2><p>♥ ${got}/${n}${got === n ? ' — hepsini topladın!' : ''}</p><p>${CONFIG.notes[li] || ''}</p>
+    <div class="row">${last ? '' : '<button id="nx">Sonraki bölüm</button>'}<button id="rp">Tekrar oyna</button><button class="ghost" id="ls">Bölümler</button></div>`);
+  if (!last) document.getElementById('nx').onclick = () => load(li + 1);
+  document.getElementById('rp').onclick = () => load(li); document.getElementById('ls').onclick = levelScreen;
+}
+document.getElementById('top').onclick = () => { state = 'menu'; levelScreen(); };
+
+/* ---- Kontroller ---- */
+const map = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', ArrowUp: 'jump', w: 'jump', W: 'jump', ' ': 'jump' };
+addEventListener('keydown', e => { if (map[e.key]) { keys[map[e.key]] = 1; if (state === 'play') e.preventDefault(); } });
+addEventListener('keyup', e => { if (map[e.key]) keys[map[e.key]] = 0; });
+document.querySelectorAll('#touch button').forEach(b => {
+  const k = b.dataset.k;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); keys[k] = 1; });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => keys[k] = 0));
+});
+
+let last = performance.now(), acc = 0;
+(function loop(now) {
+  acc += Math.min(now - last, 100); last = now;
+  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
+  draw(); requestAnimationFrame(loop);
+})(last);
+titleScreen();
+</script>
+</body>
+</html>
